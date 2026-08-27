@@ -1,0 +1,180 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ResourceType {
+  SERMON
+  EBOOK
+  SONG
+  VIDEO
+  PODCAST
+  ARTICLE
+}
+
+enum MediaType {
+  AUDIO
+  PDF
+  IMAGE
+  VIDEO
+}
+
+enum MediaProvider {
+  R2
+  YOUTUBE
+  SUPABASE
+  EXTERNAL
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
+}
+
+model Resource {
+  id String @id @default(cuid())
+
+  title       String
+  slug        String @unique
+  description String? @db.Text
+
+  content String? @db.Text
+
+  type ResourceType
+
+  speaker  String?
+  duration Int?
+
+  featured  Boolean @default(false)
+  published Boolean @default(false)
+
+  publishedAt DateTime?
+
+  thumbnailId String?
+  thumbnail   MediaAsset? @relation("ResourceThumbnail", fields: [thumbnailId], references: [id])
+
+  media MediaAsset[] @relation("ResourceMedia")
+
+  seriesId String?
+  series   Series? @relation(fields: [seriesId], references: [id])
+
+  categories ResourceCategory[]
+  tags       ResourceTag[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([type])
+  @@index([published])
+  @@index([publishedAt])
+  @@index([featured])
+  @@index([seriesId])
+}
+model MediaAsset {
+  id String @id @default(cuid())
+
+  type     MediaType
+  provider MediaProvider
+
+  title String?
+
+  url        String?
+  storageKey String?
+  externalId String?
+
+  mimeType String?
+  fileSize BigInt?
+  duration Int?
+
+  resourceId String?
+  resource   Resource? @relation("ResourceMedia", fields: [resourceId], references: [id], onDelete: Cascade)
+
+  thumbnailFor Resource[] @relation("ResourceThumbnail")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([resourceId])
+  @@index([provider])
+  @@index([type])
+}
+
+model Category {
+  id String @id @default(cuid())
+
+  name        String
+  slug        String  @unique
+  description String?
+
+  resources ResourceCategory[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Tag {
+  id String @id @default(cuid())
+
+  name String
+  slug String @unique
+
+  resources ResourceTag[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Series {
+  id String @id @default(cuid())
+
+  title       String
+  slug        String  @unique
+  description String? @db.Text
+
+  resources Resource[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ResourceCategory {
+  resourceId String
+  categoryId String
+
+  resource Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([resourceId, categoryId])
+  @@index([categoryId])
+}
+
+model ResourceTag {
+  resourceId String
+  tagId      String
+
+  resource Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  tag      Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([resourceId, tagId])
+  @@index([tagId])
+}
+
+model Admin {
+  id String @id @default(cuid())
+
+  name     String
+  email    String @unique
+  password String
+
+  role     AdminRole @default(ADMIN)
+  isActive Boolean   @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([role])
+  @@index([isActive])
+}
