@@ -1,6 +1,7 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import jwt from "@fastify/jwt";
+import multipart from "@fastify/multipart";
 
 import prismaPlugin from "./lib/prisma-plugin.js";
 
@@ -8,11 +9,19 @@ import { adminRoutes } from "./modules/admin/admin.routes.js";
 import { resourceRoutes } from "./modules/resources/resources.routes.js";
 import { adminResourceRoutes } from "./modules/resources/admin.resources.routes.js";
 import { adminCategoryRoutes } from "./modules/categories/admin.categories.routes.js";
+import { adminMediaRoutes } from "./modules/media/admin.media.routes.js";
 
 export function buildApp() {
   const app = Fastify({
     logger: true,
   });
+
+  app.register(multipart, {
+    limits: {
+        fileSize: 100 * 1024 * 1024,
+    },
+  });
+
 
   app.register(cors, {
     origin: true,
@@ -56,6 +65,10 @@ export function buildApp() {
   });
 
   app.register(adminCategoryRoutes, {
+    prefix: "/api",
+  });
+
+  app.register(adminMediaRoutes, {
     prefix: "/api",
   });
 

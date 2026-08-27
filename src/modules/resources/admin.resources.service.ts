@@ -20,7 +20,7 @@ interface ResourceMediaInput {
   externalId?: string | null;
 
   mimeType?: string | null;
-  fileSize?: number | null;
+  fileSize?: string | null;
   duration?: number | null;
 }
 
