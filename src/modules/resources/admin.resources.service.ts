@@ -20,7 +20,7 @@ interface ResourceMediaInput {
   externalId?: string | null;
 
   mimeType?: string | null;
-  fileSize?: string | null;
+  fileSize?: number | null;
   duration?: number | null;
 }
 
@@ -209,7 +209,10 @@ export async function createResource(
                     media.mimeType || null,
 
                   fileSize:
-                    media.fileSize ?? null,
+                    media.fileSize !== undefined &&
+                    media.fileSize !== null
+                      ? String(media.fileSize)
+                      : null,
 
                   duration:
                     media.duration ?? null,
@@ -405,8 +408,10 @@ export async function updateResource(
                 media.mimeType || null,
 
               fileSize:
-                media.fileSize ?? null,
-
+                media.fileSize !== undefined &&
+                media.fileSize !== null
+                  ? String(media.fileSize)
+                  : null,
               duration:
                 media.duration ?? null,
             }),
