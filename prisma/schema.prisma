@@ -23,9 +23,8 @@ enum MediaType {
 }
 
 enum MediaProvider {
-  R2
+  CLOUDINARY
   YOUTUBE
-  SUPABASE
   EXTERNAL
 }
 
