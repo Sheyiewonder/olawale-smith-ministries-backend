@@ -85,7 +85,7 @@ model MediaAsset {
   externalId String?
 
   mimeType String?
-  fileSize BigInt?
+  fileSize String?
   duration Int?
 
   resourceId String?
