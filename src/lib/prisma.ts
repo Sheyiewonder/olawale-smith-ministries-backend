@@ -11,7 +11,6 @@ const adapter = new PrismaPg({
   connectionString,
 });
 
-
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
