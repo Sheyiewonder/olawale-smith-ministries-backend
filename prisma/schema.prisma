@@ -6,6 +6,16 @@ datasource db {
   provider = "postgresql"
 }
 
+/**
+ * --------------------------------------------------------------------------
+ */
+/**
+ * Enums
+ */
+/**
+ * --------------------------------------------------------------------------
+ */
+
 enum ResourceType {
   SERMON
   EBOOK
@@ -24,6 +34,7 @@ enum MediaType {
 
 enum MediaProvider {
   CLOUDINARY
+  SUPABASE
   YOUTUBE
   EXTERNAL
 }
@@ -33,14 +44,23 @@ enum AdminRole {
   ADMIN
 }
 
+/**
+ * --------------------------------------------------------------------------
+ */
+/**
+ * Resource
+ */
+/**
+ * --------------------------------------------------------------------------
+ */
+
 model Resource {
   id String @id @default(cuid())
 
   title       String
-  slug        String @unique
+  slug        String  @unique
   description String? @db.Text
-
-  content String? @db.Text
+  content     String? @db.Text
 
   type ResourceType
 
@@ -52,19 +72,79 @@ model Resource {
 
   publishedAt DateTime?
 
+  /**
+   * ------------------------------------------------------------------------
+   */
+  /**
+   * /* Thumbnail
+   */
+  /**
+   * /* ------------------------------------------------------------------------
+   */
+
   thumbnailId String?
-  thumbnail   MediaAsset? @relation("ResourceThumbnail", fields: [thumbnailId], references: [id])
+  thumbnail   MediaAsset? @relation("ResourceThumbnail", fields: [thumbnailId], references: [id], onDelete: SetNull)
+
+  /**
+   * ------------------------------------------------------------------------
+   */
+  /**
+   * /* Media
+   */
+  /**
+   * /* ------------------------------------------------------------------------
+   */
 
   media MediaAsset[] @relation("ResourceMedia")
 
+  /**
+   * ------------------------------------------------------------------------
+   */
+  /**
+   * /* Series
+   */
+  /**
+   * /* ------------------------------------------------------------------------
+   */
+
   seriesId String?
-  series   Series? @relation(fields: [seriesId], references: [id])
+  series   Series? @relation(fields: [seriesId], references: [id], onDelete: SetNull)
+
+  /**
+   * ------------------------------------------------------------------------
+   */
+  /**
+   * /* Categories & Tags
+   */
+  /**
+   * /* ------------------------------------------------------------------------
+   */
 
   categories ResourceCategory[]
   tags       ResourceTag[]
 
+  /**
+   * ------------------------------------------------------------------------
+   */
+  /**
+   * /* Timestamps
+   */
+  /**
+   * /* ------------------------------------------------------------------------
+   */
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  /**
+   * ------------------------------------------------------------------------
+   */
+  /**
+   * /* Indexes
+   */
+  /**
+   * /* ------------------------------------------------------------------------
+   */
 
   @@index([type])
   @@index([published])
@@ -72,6 +152,17 @@ model Resource {
   @@index([featured])
   @@index([seriesId])
 }
+
+/**
+ * --------------------------------------------------------------------------
+ */
+/**
+ * Media Asset
+ */
+/**
+ * --------------------------------------------------------------------------
+ */
+
 model MediaAsset {
   id String @id @default(cuid())
 
@@ -80,26 +171,117 @@ model MediaAsset {
 
   title String?
 
-  url        String?
+  /**
+   * Public URL for the media.
+   * Examples:
+   * - Cloudinary delivery URL
+   * - Supabase Storage public URL
+   * - YouTube URL
+   * - External media URL
+   */
+  url String?
+
+  /**
+   * Provider-specific storage identifier.
+   * Cloudinary:
+   * public_id
+   * Supabase:
+   * storage path
+   * External providers:
+   * optional provider-specific key
+   */
   storageKey String?
+
+  /**
+   * Provider-specific external identifier.
+   * YouTube:
+   * video ID
+   */
   externalId String?
 
   mimeType String?
+
+  /**
+   * Stored as String rather than BigInt so Prisma results
+   * can be returned directly through Fastify/JSON without
+   * BigInt serialization issues.
+   * Example:
+   * "52428800"
+   */
   fileSize String?
+
+  /**
+   * Duration in seconds.
+   * Used primarily for:
+   * - sermons
+   * - songs
+   * - podcasts
+   * - audio/video media
+   */
   duration Int?
+
+  /**
+   * ------------------------------------------------------------------------
+   */
+  /**
+   * /* Resource relationship
+   */
+  /**
+   * /* ------------------------------------------------------------------------
+   */
 
   resourceId String?
   resource   Resource? @relation("ResourceMedia", fields: [resourceId], references: [id], onDelete: Cascade)
 
+  /**
+   * ------------------------------------------------------------------------
+   */
+  /**
+   * /* Thumbnail relationship
+   */
+  /**
+   * /* ------------------------------------------------------------------------
+   */
+
   thumbnailFor Resource[] @relation("ResourceThumbnail")
+
+  /**
+   * ------------------------------------------------------------------------
+   */
+  /**
+   * /* Timestamps
+   */
+  /**
+   * /* ------------------------------------------------------------------------
+   */
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  /**
+   * ------------------------------------------------------------------------
+   */
+  /**
+   * /* Indexes
+   */
+  /**
+   * /* ------------------------------------------------------------------------
+   */
 
   @@index([resourceId])
   @@index([provider])
   @@index([type])
 }
+
+/**
+ * --------------------------------------------------------------------------
+ */
+/**
+ * Category
+ */
+/**
+ * --------------------------------------------------------------------------
+ */
 
 model Category {
   id String @id @default(cuid())
@@ -114,6 +296,16 @@ model Category {
   updatedAt DateTime @updatedAt
 }
 
+/**
+ * --------------------------------------------------------------------------
+ */
+/**
+ * Tag
+ */
+/**
+ * --------------------------------------------------------------------------
+ */
+
 model Tag {
   id String @id @default(cuid())
 
@@ -125,6 +317,16 @@ model Tag {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+/**
+ * --------------------------------------------------------------------------
+ */
+/**
+ * Series
+ */
+/**
+ * --------------------------------------------------------------------------
+ */
 
 model Series {
   id String @id @default(cuid())
@@ -139,6 +341,16 @@ model Series {
   updatedAt DateTime @updatedAt
 }
 
+/**
+ * --------------------------------------------------------------------------
+ */
+/**
+ * Resource ↔ Category
+ */
+/**
+ * --------------------------------------------------------------------------
+ */
+
 model ResourceCategory {
   resourceId String
   categoryId String
@@ -150,6 +362,16 @@ model ResourceCategory {
   @@index([categoryId])
 }
 
+/**
+ * --------------------------------------------------------------------------
+ */
+/**
+ * Resource ↔ Tag
+ */
+/**
+ * --------------------------------------------------------------------------
+ */
+
 model ResourceTag {
   resourceId String
   tagId      String
@@ -160,6 +382,16 @@ model ResourceTag {
   @@id([resourceId, tagId])
   @@index([tagId])
 }
+
+/**
+ * --------------------------------------------------------------------------
+ */
+/**
+ * Admin
+ */
+/**
+ * --------------------------------------------------------------------------
+ */
 
 model Admin {
   id String @id @default(cuid())
