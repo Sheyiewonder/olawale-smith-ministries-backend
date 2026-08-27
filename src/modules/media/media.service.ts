@@ -30,7 +30,7 @@ function getResourceType(
       return "image";
 
     /*
-     * Cloudinary stores audio under the
+     * Cloudinary stores audio using the
      * "video" resource type.
      */
     case "AUDIO":
@@ -43,10 +43,10 @@ function getResourceType(
 
 function getFolder(
   type: UploadMediaType,
-) {
+): string {
   switch (type) {
     case "AUDIO":
-      return "olawale-smith/sermons";
+      return "olawale-smith/audio";
 
     case "PDF":
       return "olawale-smith/ebooks";
@@ -87,9 +87,9 @@ export async function uploadMedia(
           folder,
 
           /*
-           * Keep the original filename readable
-           * while allowing Cloudinary to generate
-           * the final public ID safely.
+           * Preserve a readable version of the
+           * original filename while allowing
+           * Cloudinary to generate a unique ID.
            */
           use_filename: true,
           unique_filename: true,
@@ -114,20 +114,26 @@ export async function uploadMedia(
           }
 
           resolve({
-            publicId: result.public_id,
+            publicId:
+              result.public_id,
 
-            url: result.url,
+            url:
+              result.url,
 
-            secureUrl: result.secure_url,
+            secureUrl:
+              result.secure_url,
 
             resourceType:
               result.resource_type,
 
-            format: result.format,
+            format:
+              result.format,
 
-            bytes: result.bytes,
+            bytes:
+              result.bytes,
 
-            duration: result.duration,
+            duration:
+              result.duration,
 
             originalFilename:
               input.filename,
@@ -135,9 +141,9 @@ export async function uploadMedia(
         },
       );
 
-    Readable.from(input.buffer).pipe(
-      uploadStream,
-    );
+    Readable
+      .from(input.buffer)
+      .pipe(uploadStream);
   });
 }
 

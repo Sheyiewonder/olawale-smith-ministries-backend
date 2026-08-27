@@ -1,5 +1,4 @@
 import type { FastifyInstance } from "fastify";
-// import type { MultipartFile } from "@fastify/multipart";
 
 import { requireAuth } from "../../lib/auth.js";
 
@@ -52,13 +51,6 @@ function isValidUploadType(
   );
 }
 
-/**
- * Extracts a text field from a multipart field.
- *
- * Fastify's multipart types allow a field to be either
- * a MultipartField or a MultipartFile, so we check for
- * the `value` property before accessing it.
- */
 function getMultipartFieldValue(
   field: unknown,
 ): string | undefined {
@@ -105,12 +97,12 @@ export async function adminMediaRoutes(
 
         if (!file) {
           return reply.code(400).send({
-            error: "No file uploaded",
+            error: "No file uploaded.",
           });
         }
 
         /* ------------------------------------------------------------------ */
-        /* Get media type                                                     */
+        /* Get requested media type                                           */
         /* ------------------------------------------------------------------ */
 
         const typeField =
@@ -124,7 +116,7 @@ export async function adminMediaRoutes(
         if (!resourceType) {
           return reply.code(400).send({
             error:
-              "Resource type is required",
+              "Media type is required.",
           });
         }
 
@@ -143,15 +135,14 @@ export async function adminMediaRoutes(
           });
         }
 
-        const mediaType =
-          resourceType;
-
         /* ------------------------------------------------------------------ */
         /* Validate MIME type                                                 */
         /* ------------------------------------------------------------------ */
 
         const allowed =
-          allowedMimeTypes[mediaType];
+          allowedMimeTypes[
+            resourceType
+          ];
 
         if (
           !allowed.includes(
@@ -159,7 +150,8 @@ export async function adminMediaRoutes(
           )
         ) {
           return reply.code(400).send({
-            error: `Invalid file type for ${mediaType}`,
+            error:
+              `Invalid file type for ${resourceType}.`,
           });
         }
 
@@ -170,8 +162,14 @@ export async function adminMediaRoutes(
         const buffer =
           await file.toBuffer();
 
+        if (buffer.length === 0) {
+          return reply.code(400).send({
+            error: "Uploaded file is empty.",
+          });
+        }
+
         /* ------------------------------------------------------------------ */
-        /* Upload                                                             */
+        /* Upload to Cloudinary                                               */
         /* ------------------------------------------------------------------ */
 
         const uploaded =
@@ -184,7 +182,8 @@ export async function adminMediaRoutes(
             mimeType:
               file.mimetype,
 
-            type: mediaType,
+            type:
+              resourceType,
           });
 
         /* ------------------------------------------------------------------ */
@@ -192,16 +191,48 @@ export async function adminMediaRoutes(
         /* ------------------------------------------------------------------ */
 
         return reply.code(201).send({
-          data: uploaded,
+          success: true,
+
+          data: {
+            publicId:
+              uploaded.publicId,
+
+            url:
+              uploaded.url,
+
+            secureUrl:
+              uploaded.secureUrl,
+
+            resourceType:
+              uploaded.resourceType,
+
+            format:
+              uploaded.format,
+
+            bytes:
+              uploaded.bytes,
+
+            duration:
+              uploaded.duration,
+
+            originalFilename:
+              uploaded.originalFilename,
+
+            type:
+              resourceType,
+          },
         });
       } catch (error) {
-        request.log.error(error);
+        request.log.error(
+          error,
+          "Cloudinary media upload failed",
+        );
 
         return reply.code(500).send({
           error:
             error instanceof Error
               ? error.message
-              : "Failed to upload media",
+              : "Failed to upload media.",
         });
       }
     },

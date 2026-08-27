@@ -1,4 +1,5 @@
 import Fastify from "fastify";
+
 import cors from "@fastify/cors";
 import jwt from "@fastify/jwt";
 import multipart from "@fastify/multipart";
@@ -16,15 +17,25 @@ export function buildApp() {
     logger: true,
   });
 
+  /* ------------------------------------------------------------------------ */
+  /* Multipart                                                                */
+  /* ------------------------------------------------------------------------ */
+
   app.register(multipart, {
     limits: {
-        fileSize: 100 * 1024 * 1024,
+      fileSize: 100 * 1024 * 1024,
+      files: 1,
+      fields: 10,
     },
   });
 
+  /* ------------------------------------------------------------------------ */
+  /* CORS                                                                     */
+  /* ------------------------------------------------------------------------ */
 
   app.register(cors, {
     origin: true,
+
     methods: [
       "GET",
       "HEAD",
@@ -34,11 +45,16 @@ export function buildApp() {
       "DELETE",
       "OPTIONS",
     ],
+
     allowedHeaders: [
       "Content-Type",
       "Authorization",
     ],
   });
+
+  /* ------------------------------------------------------------------------ */
+  /* JWT                                                                      */
+  /* ------------------------------------------------------------------------ */
 
   if (!process.env.JWT_SECRET) {
     throw new Error(
@@ -47,10 +63,19 @@ export function buildApp() {
   }
 
   app.register(jwt, {
-    secret: process.env.JWT_SECRET,
+    secret:
+      process.env.JWT_SECRET,
   });
 
+  /* ------------------------------------------------------------------------ */
+  /* Prisma                                                                   */
+  /* ------------------------------------------------------------------------ */
+
   app.register(prismaPlugin);
+
+  /* ------------------------------------------------------------------------ */
+  /* Routes                                                                   */
+  /* ------------------------------------------------------------------------ */
 
   app.register(resourceRoutes, {
     prefix: "/api",
@@ -72,11 +97,17 @@ export function buildApp() {
     prefix: "/api",
   });
 
+  /* ------------------------------------------------------------------------ */
+  /* Health                                                                   */
+  /* ------------------------------------------------------------------------ */
+
   app.get("/health", async () => {
     return {
       status: "ok",
-      service: "olawale-smith-ministries-api",
-      timestamp: new Date().toISOString(),
+      service:
+        "olawale-smith-ministries-api",
+      timestamp:
+        new Date().toISOString(),
     };
   });
 
