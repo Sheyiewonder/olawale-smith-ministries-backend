@@ -75,36 +75,32 @@ export async function adminMediaRoutes(
 
     async (request, reply) => {
       try {
-        const file =
-          await request.file();
+        let resourceType: unknown;
+        let filename = "";
+        let mimeType = "";
+        let buffer: Buffer | undefined;
 
-        if (!file) {
+        for await (const part of request.parts()) {
+          if (part.type === "field") {
+            if (part.fieldname === "type") {
+              resourceType = part.value;
+            }
+
+            continue;
+          }
+
+          if (!buffer) {
+            filename = part.filename;
+            mimeType = part.mimetype;
+            buffer = await part.toBuffer();
+          }
+        }
+
+        if (!buffer) {
           return reply.code(400).send({
             error:
               "No file uploaded.",
           });
-        }
-
-        /* ------------------------------------------------------------------ */
-        /* Media Type                                                          */
-        /* ------------------------------------------------------------------ */
-
-        const typeField =
-          file.fields.type;
-
-        let resourceType: unknown;
-
-        if (
-          typeField &&
-          typeof typeField === "object" &&
-          "value" in typeField
-        ) {
-          resourceType =
-            (
-              typeField as {
-                value?: unknown;
-              }
-            ).value;
         }
 
         if (
@@ -142,7 +138,7 @@ export async function adminMediaRoutes(
 
         if (
           !allowed.includes(
-            file.mimetype,
+            mimeType,
           )
         ) {
           return reply.code(400).send({
@@ -154,9 +150,6 @@ export async function adminMediaRoutes(
         /* ------------------------------------------------------------------ */
         /* Read File                                                           */
         /* ------------------------------------------------------------------ */
-
-        const buffer =
-          await file.toBuffer();
 
         if (buffer.length === 0) {
           return reply.code(400).send({
@@ -173,11 +166,9 @@ export async function adminMediaRoutes(
           await uploadMedia({
             buffer,
 
-            filename:
-              file.filename,
+            filename,
 
-            mimeType:
-              file.mimetype,
+            mimeType,
 
             type:
               resourceType,
