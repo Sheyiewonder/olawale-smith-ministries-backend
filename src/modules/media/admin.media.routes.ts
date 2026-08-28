@@ -13,37 +13,16 @@ import {
 
 const allowedMimeTypes: Record<
   UploadMediaType,
-  string[]
+  (mimeType: string) => boolean
 > = {
-  AUDIO: [
-    "audio/mpeg",
-    "audio/mp3",
-    "audio/wav",
-    "audio/x-wav",
-    "audio/ogg",
-    "audio/mp4",
-    "audio/aac",
-    "audio/webm",
-  ],
+  AUDIO: (mimeType) =>
+    mimeType.startsWith("audio/"),
 
-  PDF: [
-    "application/pdf",
-  ],
+  PDF: (mimeType) =>
+    mimeType === "application/pdf",
 
-  IMAGE: [
-    "image/jpeg",
-    "image/jpg",
-    "image/png",
-    "image/webp",
-    "Image/gif",
-    "image/svg+xml",
-    "image/tiff",
-    "image/bmp",
-    "image/heic",
-    "image/heif",
-    "image/avif",
-    "image/jiff",
-  ],
+  IMAGE: (mimeType) =>
+    mimeType.startsWith("image/"),
 };
 
 /* -------------------------------------------------------------------------- */
@@ -58,6 +37,46 @@ function isValidUploadType(
     value === "PDF" ||
     value === "IMAGE"
   );
+}
+
+function getUploadErrorMessage(
+  error: unknown,
+): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (typeof error === "object" && error) {
+    const value = error as {
+      message?: unknown;
+      error?: unknown;
+    };
+
+    if (typeof value.message === "string") {
+      return value.message;
+    }
+
+    if (
+      typeof value.error === "object" &&
+      value.error
+    ) {
+      const nested = value.error as {
+        message?: unknown;
+      };
+
+      if (
+        typeof nested.message === "string"
+      ) {
+        return nested.message;
+      }
+    }
+
+    if (typeof value.error === "string") {
+      return value.error;
+    }
+  }
+
+  return "Failed to upload media.";
 }
 
 /* -------------------------------------------------------------------------- */
@@ -131,19 +150,18 @@ export async function adminMediaRoutes(
         /* Validate MIME Type                                                  */
         /* ------------------------------------------------------------------ */
 
-        const allowed =
+        const normalizedMimeType =
+          mimeType.toLowerCase();
+
+        const isAllowed =
           allowedMimeTypes[
             resourceType
-          ];
+          ](normalizedMimeType);
 
-        if (
-          !allowed.includes(
-            mimeType,
-          )
-        ) {
+        if (!isAllowed) {
           return reply.code(400).send({
             error:
-              `Invalid file type for ${resourceType}.`,
+              `Invalid file type for ${resourceType}: ${mimeType || "unknown"}.`,
           });
         }
 
@@ -221,9 +239,7 @@ export async function adminMediaRoutes(
 
         return reply.code(500).send({
           error:
-            error instanceof Error
-              ? error.message
-              : "Failed to upload media.",
+            getUploadErrorMessage(error),
         });
       }
     },
