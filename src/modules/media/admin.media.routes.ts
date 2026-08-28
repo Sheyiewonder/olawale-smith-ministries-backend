@@ -32,8 +32,17 @@ const allowedMimeTypes: Record<
 
   IMAGE: [
     "image/jpeg",
+    "image/jpg",
     "image/png",
     "image/webp",
+    "Image/gif",
+    "image/svg+xml",
+    "image/tiff",
+    "image/bmp",
+    "image/heic",
+    "image/heif",
+    "image/avif",
+    "image/jiff",
   ],
 };
 
@@ -51,28 +60,6 @@ function isValidUploadType(
   );
 }
 
-function getMultipartFieldValue(
-  field: unknown,
-): string | undefined {
-  if (
-    field &&
-    typeof field === "object" &&
-    "value" in field
-  ) {
-    const value = (
-      field as {
-        value?: unknown;
-      }
-    ).value;
-
-    return typeof value === "string"
-      ? value
-      : undefined;
-  }
-
-  return undefined;
-}
-
 /* -------------------------------------------------------------------------- */
 /* Routes                                                                     */
 /* -------------------------------------------------------------------------- */
@@ -88,32 +75,41 @@ export async function adminMediaRoutes(
 
     async (request, reply) => {
       try {
-        /* ------------------------------------------------------------------ */
-        /* Get uploaded file                                                  */
-        /* ------------------------------------------------------------------ */
-
         const file =
           await request.file();
 
         if (!file) {
           return reply.code(400).send({
-            error: "No file uploaded.",
+            error:
+              "No file uploaded.",
           });
         }
 
         /* ------------------------------------------------------------------ */
-        /* Get requested media type                                           */
+        /* Media Type                                                          */
         /* ------------------------------------------------------------------ */
 
         const typeField =
           file.fields.type;
 
-        const resourceType =
-          getMultipartFieldValue(
-            typeField,
-          );
+        let resourceType: unknown;
 
-        if (!resourceType) {
+        if (
+          typeField &&
+          typeof typeField === "object" &&
+          "value" in typeField
+        ) {
+          resourceType =
+            (
+              typeField as {
+                value?: unknown;
+              }
+            ).value;
+        }
+
+        if (
+          typeof resourceType !== "string"
+        ) {
           return reply.code(400).send({
             error:
               "Media type is required.",
@@ -121,7 +117,7 @@ export async function adminMediaRoutes(
         }
 
         /* ------------------------------------------------------------------ */
-        /* Validate media type                                                */
+        /* Validate Media Type                                                 */
         /* ------------------------------------------------------------------ */
 
         if (
@@ -136,7 +132,7 @@ export async function adminMediaRoutes(
         }
 
         /* ------------------------------------------------------------------ */
-        /* Validate MIME type                                                 */
+        /* Validate MIME Type                                                  */
         /* ------------------------------------------------------------------ */
 
         const allowed =
@@ -156,7 +152,7 @@ export async function adminMediaRoutes(
         }
 
         /* ------------------------------------------------------------------ */
-        /* Read file                                                          */
+        /* Read File                                                           */
         /* ------------------------------------------------------------------ */
 
         const buffer =
@@ -164,12 +160,13 @@ export async function adminMediaRoutes(
 
         if (buffer.length === 0) {
           return reply.code(400).send({
-            error: "Uploaded file is empty.",
+            error:
+              "Uploaded file is empty.",
           });
         }
 
         /* ------------------------------------------------------------------ */
-        /* Upload to Cloudinary                                               */
+        /* Upload to Cloudinary                                                */
         /* ------------------------------------------------------------------ */
 
         const uploaded =
@@ -187,7 +184,7 @@ export async function adminMediaRoutes(
           });
 
         /* ------------------------------------------------------------------ */
-        /* Response                                                           */
+        /* Response                                                            */
         /* ------------------------------------------------------------------ */
 
         return reply.code(201).send({
@@ -217,6 +214,9 @@ export async function adminMediaRoutes(
 
             originalFilename:
               uploaded.originalFilename,
+
+            mimeType:
+              uploaded.mimeType,
 
             type:
               resourceType,

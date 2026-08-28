@@ -18,6 +18,18 @@ export interface UploadMediaInput {
   type: UploadMediaType;
 }
 
+export interface UploadedMedia {
+  publicId: string;
+  url: string;
+  secureUrl: string;
+  resourceType: string;
+  format?: string;
+  bytes: number;
+  duration?: number;
+  originalFilename: string;
+  mimeType: string;
+}
+
 /* -------------------------------------------------------------------------- */
 /* Helpers                                                                    */
 /* -------------------------------------------------------------------------- */
@@ -30,8 +42,8 @@ function getResourceType(
       return "image";
 
     /*
-     * Cloudinary stores audio using the
-     * "video" resource type.
+     * Cloudinary uses the "video" resource type
+     * for audio files.
      */
     case "AUDIO":
       return "video";
@@ -57,98 +69,88 @@ function getFolder(
 }
 
 /* -------------------------------------------------------------------------- */
-/* Upload                                                                     */
+/* Upload Media                                                               */
 /* -------------------------------------------------------------------------- */
 
 export async function uploadMedia(
   input: UploadMediaInput,
-) {
+): Promise<UploadedMedia> {
   const resourceType =
     getResourceType(input.type);
 
   const folder =
     getFolder(input.type);
 
-  return new Promise<{
-    publicId: string;
-    url: string;
-    secureUrl: string;
-    resourceType: string;
-    format?: string;
-    bytes: number;
-    duration?: number;
-    originalFilename: string;
-  }>((resolve, reject) => {
-    const uploadStream =
-      cloudinary.uploader.upload_stream(
-        {
-          resource_type: resourceType,
+  return new Promise<UploadedMedia>(
+    (resolve, reject) => {
+      const uploadStream =
+        cloudinary.uploader.upload_stream(
+          {
+            resource_type: resourceType,
 
-          folder,
+            folder,
 
-          /*
-           * Preserve a readable version of the
-           * original filename while allowing
-           * Cloudinary to generate a unique ID.
-           */
-          use_filename: true,
-          unique_filename: true,
+            use_filename: true,
+            unique_filename: true,
+            overwrite: false,
+          },
 
-          overwrite: false,
-        },
+          (error, result) => {
+            if (error) {
+              reject(error);
+              return;
+            }
 
-        (error, result) => {
-          if (error) {
-            reject(error);
-            return;
-          }
+            if (!result) {
+              reject(
+                new Error(
+                  "Cloudinary returned no upload result.",
+                ),
+              );
 
-          if (!result) {
-            reject(
-              new Error(
-                "Cloudinary returned no upload result",
-              ),
-            );
+              return;
+            }
 
-            return;
-          }
+            resolve({
+              publicId:
+                result.public_id,
 
-          resolve({
-            publicId:
-              result.public_id,
+              url:
+                result.url,
 
-            url:
-              result.url,
+              secureUrl:
+                result.secure_url,
 
-            secureUrl:
-              result.secure_url,
+              resourceType:
+                result.resource_type,
 
-            resourceType:
-              result.resource_type,
+              format:
+                result.format,
 
-            format:
-              result.format,
+              bytes:
+                result.bytes,
 
-            bytes:
-              result.bytes,
+              duration:
+                result.duration,
 
-            duration:
-              result.duration,
+              originalFilename:
+                input.filename,
 
-            originalFilename:
-              input.filename,
-          });
-        },
-      );
+              mimeType:
+                input.mimeType,
+            });
+          },
+        );
 
-    Readable
-      .from(input.buffer)
-      .pipe(uploadStream);
-  });
+      Readable
+        .from(input.buffer)
+        .pipe(uploadStream);
+    },
+  );
 }
 
 /* -------------------------------------------------------------------------- */
-/* Delete                                                                     */
+/* Delete Media                                                               */
 /* -------------------------------------------------------------------------- */
 
 export async function deleteMedia(
@@ -158,14 +160,11 @@ export async function deleteMedia(
   const resourceType =
     getResourceType(type);
 
-  const result =
-    await cloudinary.uploader.destroy(
-      publicId,
-      {
-        resource_type: resourceType,
-        type: "upload",
-      },
-    );
-
-  return result;
+  return cloudinary.uploader.destroy(
+    publicId,
+    {
+      resource_type: resourceType,
+      type: "upload",
+    },
+  );
 }
