@@ -3,6 +3,7 @@ import { prisma } from "../../lib/prisma.js";
 import type {
   MediaProvider,
   MediaType,
+  Prisma,
   ResourceType,
 } from "@prisma/client";
 
@@ -20,7 +21,14 @@ interface ResourceMediaInput {
   externalId?: string | null;
 
   mimeType?: string | null;
-  fileSize?: number | null;
+
+  /**
+   * MediaAsset.fileSize is String? in schema.prisma.
+   *
+   * Keep this as a string throughout the service.
+   */
+  fileSize?: string | null;
+
   duration?: number | null;
 }
 
@@ -51,6 +59,43 @@ interface CreateResourceInput {
 
 export type UpdateResourceInput =
   Partial<CreateResourceInput>;
+
+/* -------------------------------------------------------------------------- */
+/* Media Helper                                                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Converts our service media input into Prisma's nested media-create input.
+ *
+ * This explicitly tells TypeScript that fileSize is a string,
+ * matching:
+ *
+ * fileSize String?
+ *
+ * in schema.prisma.
+ */
+function toMediaCreateData(
+  media: ResourceMediaInput,
+): Prisma.MediaAssetCreateWithoutResourceInput {
+  return {
+    type: media.type,
+    provider: media.provider,
+
+    title: media.title || null,
+    url: media.url || null,
+    storageKey: media.storageKey || null,
+    externalId: media.externalId || null,
+    mimeType: media.mimeType || null,
+
+    fileSize:
+      media.fileSize !== undefined &&
+      media.fileSize !== null
+        ? String(media.fileSize)
+        : null,
+
+    duration: media.duration ?? null,
+  };
+}
 
 /* -------------------------------------------------------------------------- */
 /* Resource Include                                                           */
@@ -149,6 +194,10 @@ export async function createResource(
       seriesId:
         input.seriesId || null,
 
+      /* ------------------------------------------------------------------ */
+      /* Categories                                                         */
+      /* ------------------------------------------------------------------ */
+
       categories:
         input.categoryIds?.length
           ? {
@@ -164,6 +213,10 @@ export async function createResource(
                 ),
             }
           : undefined,
+
+      /* ------------------------------------------------------------------ */
+      /* Tags                                                               */
+      /* ------------------------------------------------------------------ */
 
       tags:
         input.tagIds?.length
@@ -181,43 +234,17 @@ export async function createResource(
             }
           : undefined,
 
+      /* ------------------------------------------------------------------ */
+      /* Media                                                              */
+      /* ------------------------------------------------------------------ */
+
       media:
         input.media?.length
           ? {
-              create: input.media.map(
-                (media) => ({
-                  type: media.type,
-
-                  provider:
-                    media.provider,
-
-                  title:
-                    media.title || null,
-
-                  url:
-                    media.url || null,
-
-                  storageKey:
-                    media.storageKey ||
-                    null,
-
-                  externalId:
-                    media.externalId ||
-                    null,
-
-                  mimeType:
-                    media.mimeType || null,
-
-                  fileSize:
-                    media.fileSize !== undefined &&
-                    media.fileSize !== null
-                      ? String(media.fileSize)
-                      : null,
-
-                  duration:
-                    media.duration ?? null,
-                }),
-              ),
+              create:
+                input.media.map(
+                  toMediaCreateData,
+                ),
             }
           : undefined,
     },
@@ -232,7 +259,7 @@ export async function createResource(
 
 export async function updateResource(
   id: string,
-  input: Partial<CreateResourceInput>,
+  input: UpdateResourceInput,
 ) {
   const existing =
     await prisma.resource.findUnique({
@@ -332,6 +359,7 @@ export async function updateResource(
               categoryId,
             }),
           ),
+
           skipDuplicates: true,
         });
       }
@@ -356,6 +384,7 @@ export async function updateResource(
               tagId,
             }),
           ),
+
           skipDuplicates: true,
         });
       }
@@ -366,15 +395,15 @@ export async function updateResource(
     /* ---------------------------------------------------------------------- */
 
     if (input.media !== undefined) {
-      /*
-       * We intentionally replace the resource's
-       * media collection when `media` is supplied.
+      /**
+       * The edit page sends the complete current
+       * media collection.
        *
-       * This means:
+       * Therefore:
        *
        * media: []
        *
-       * will remove all media from the resource.
+       * means remove all media from the resource.
        */
 
       await tx.mediaAsset.deleteMany({
@@ -390,7 +419,9 @@ export async function updateResource(
               resourceId: id,
 
               type: media.type,
-              provider: media.provider,
+
+              provider:
+                media.provider,
 
               title:
                 media.title || null,
@@ -410,8 +441,11 @@ export async function updateResource(
               fileSize:
                 media.fileSize !== undefined &&
                 media.fileSize !== null
-                  ? String(media.fileSize)
+                  ? String(
+                      media.fileSize,
+                    )
                   : null,
+
               duration:
                 media.duration ?? null,
             }),
@@ -429,29 +463,10 @@ export async function updateResource(
         id,
       },
 
-      include: {
-        categories: {
-          include: {
-            category: true,
-          },
-        },
-
-        tags: {
-          include: {
-            tag: true,
-          },
-        },
-
-        media: true,
-
-        thumbnail: true,
-
-        series: true,
-      },
+      include: resourceInclude,
     });
   });
 }
-
 
 /* -------------------------------------------------------------------------- */
 /* Delete Resource                                                            */
