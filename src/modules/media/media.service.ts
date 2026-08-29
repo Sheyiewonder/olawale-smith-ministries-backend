@@ -93,6 +93,7 @@ export async function uploadMedia(
             use_filename: true,
             unique_filename: true,
             overwrite: false,
+            filename_override: input.filename,
           },
 
           (error, result) => {
