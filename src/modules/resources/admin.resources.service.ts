@@ -159,7 +159,7 @@ export async function createResource(
   const published =
     input.published ?? false;
 
-  return prisma.resource.create({
+  const resource = await prisma.resource.create({
     data: {
       title: input.title.trim(),
 
@@ -249,6 +249,28 @@ export async function createResource(
           : undefined,
     },
 
+    include: resourceInclude,
+  });
+
+  const thumbnail = await prisma.mediaAsset.findFirst({
+    where: {
+      resourceId: resource.id,
+      type: "IMAGE",
+    },
+    orderBy: {
+      createdAt: "asc",
+    },
+  });
+
+  if (thumbnail) {
+    await prisma.resource.update({
+      where: { id: resource.id },
+      data: { thumbnailId: thumbnail.id },
+    });
+  }
+
+  return prisma.resource.findUnique({
+    where: { id: resource.id },
     include: resourceInclude,
   });
 }
@@ -452,6 +474,23 @@ export async function updateResource(
           ),
         });
       }
+
+      const thumbnail = await tx.mediaAsset.findFirst({
+        where: {
+          resourceId: id,
+          type: "IMAGE",
+        },
+        orderBy: {
+          createdAt: "asc",
+        },
+      });
+
+      await tx.resource.update({
+        where: { id },
+        data: {
+          thumbnailId: thumbnail?.id ?? null,
+        },
+      });
     }
 
     /* ---------------------------------------------------------------------- */
