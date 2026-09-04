@@ -27,7 +27,7 @@ function getResourceType(
   mimeType: string,
 ) {
   if (mimeType === "application/pdf") {
-    return "raw";
+    return "image";
   }
 
   if (mimeType.startsWith("audio/")) {
@@ -74,6 +74,11 @@ export async function uploadFileToCloudinary({
 
           (error, result) => {
             if (error) {
+              console.error(
+                "CLOUDINARY UPLOAD ERROR:",
+                error,
+              );
+
               reject(error);
               return;
             }

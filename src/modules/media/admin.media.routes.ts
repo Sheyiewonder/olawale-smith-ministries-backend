@@ -46,32 +46,42 @@ function getUploadErrorMessage(
     return error.message;
   }
 
-  if (typeof error === "object" && error) {
+  if (
+    typeof error === "object" &&
+    error !== null
+  ) {
     const value = error as {
       message?: unknown;
       error?: unknown;
     };
 
-    if (typeof value.message === "string") {
+    if (
+      typeof value.message === "string" &&
+      value.message.trim()
+    ) {
       return value.message;
     }
 
     if (
       typeof value.error === "object" &&
-      value.error
+      value.error !== null
     ) {
       const nested = value.error as {
         message?: unknown;
       };
 
       if (
-        typeof nested.message === "string"
+        typeof nested.message === "string" &&
+        nested.message.trim()
       ) {
         return nested.message;
       }
     }
 
-    if (typeof value.error === "string") {
+    if (
+      typeof value.error === "string" &&
+      value.error.trim()
+    ) {
       return value.error;
     }
   }
@@ -91,13 +101,16 @@ export async function adminMediaRoutes(
     {
       preHandler: requireAuth,
     },
-
     async (request, reply) => {
       try {
         let resourceType: unknown;
         let filename = "";
         let mimeType = "";
         let buffer: Buffer | undefined;
+
+        /* ------------------------------------------------------------------ */
+        /* Parse Multipart Form Data                                          */
+        /* ------------------------------------------------------------------ */
 
         for await (const part of request.parts()) {
           if (part.type === "field") {
@@ -108,36 +121,50 @@ export async function adminMediaRoutes(
             continue;
           }
 
-          if (!buffer) {
-            filename = part.filename;
-            mimeType = part.mimetype;
-            buffer = await part.toBuffer();
+          /*
+           * We only expect one uploaded file.
+           * Ignore additional file parts rather than
+           * accidentally uploading multiple files.
+           */
+          if (buffer) {
+            continue;
           }
+
+          filename = part.filename;
+          mimeType = part.mimetype;
+
+          buffer = await part.toBuffer();
         }
+
+        /* ------------------------------------------------------------------ */
+        /* Validate File                                                      */
+        /* ------------------------------------------------------------------ */
 
         if (!buffer) {
           return reply.code(400).send({
-            error:
-              "No file uploaded.",
+            error: "No file uploaded.",
           });
         }
 
         if (
-          typeof resourceType !== "string"
+          typeof resourceType !== "string" ||
+          !resourceType.trim()
         ) {
           return reply.code(400).send({
-            error:
-              "Media type is required.",
+            error: "Media type is required.",
           });
         }
 
+        const normalizedResourceType =
+          resourceType.trim().toUpperCase();
+
         /* ------------------------------------------------------------------ */
-        /* Validate Media Type                                                 */
+        /* Validate Media Type                                                */
         /* ------------------------------------------------------------------ */
 
         if (
           !isValidUploadType(
-            resourceType,
+            normalizedResourceType,
           )
         ) {
           return reply.code(400).send({
@@ -147,32 +174,43 @@ export async function adminMediaRoutes(
         }
 
         /* ------------------------------------------------------------------ */
+        /* Validate Filename                                                  */
+        /* ------------------------------------------------------------------ */
+
+        if (!filename.trim()) {
+          return reply.code(400).send({
+            error: "Uploaded file has no filename.",
+          });
+        }
+
+        /* ------------------------------------------------------------------ */
         /* Validate MIME Type                                                  */
         /* ------------------------------------------------------------------ */
 
         const normalizedMimeType =
-          mimeType.toLowerCase();
+          mimeType.trim().toLowerCase();
 
         const isAllowed =
           allowedMimeTypes[
-            resourceType
+            normalizedResourceType
           ](normalizedMimeType);
 
         if (!isAllowed) {
           return reply.code(400).send({
             error:
-              `Invalid file type for ${resourceType}: ${mimeType || "unknown"}.`,
+              `Invalid file type for ${normalizedResourceType}: ${
+                mimeType || "unknown"
+              }.`,
           });
         }
 
         /* ------------------------------------------------------------------ */
-        /* Read File                                                           */
+        /* Validate File Size / Content                                       */
         /* ------------------------------------------------------------------ */
 
         if (buffer.length === 0) {
           return reply.code(400).send({
-            error:
-              "Uploaded file is empty.",
+            error: "Uploaded file is empty.",
           });
         }
 
@@ -180,17 +218,12 @@ export async function adminMediaRoutes(
         /* Upload to Cloudinary                                                */
         /* ------------------------------------------------------------------ */
 
-        const uploaded =
-          await uploadMedia({
-            buffer,
-
-            filename,
-
-            mimeType,
-
-            type:
-              resourceType,
-          });
+        const uploaded = await uploadMedia({
+          buffer,
+          filename,
+          mimeType: normalizedMimeType,
+          type: normalizedResourceType,
+        });
 
         /* ------------------------------------------------------------------ */
         /* Response                                                            */
@@ -200,35 +233,36 @@ export async function adminMediaRoutes(
           success: true,
 
           data: {
-            publicId:
-              uploaded.publicId,
+            publicId: uploaded.publicId,
 
-            url:
-              uploaded.url,
+            url: uploaded.url,
 
-            secureUrl:
-              uploaded.secureUrl,
+            secureUrl: uploaded.secureUrl,
 
             resourceType:
               uploaded.resourceType,
 
-            format:
-              uploaded.format,
+            format: uploaded.format,
 
-            bytes:
-              uploaded.bytes,
+            bytes: uploaded.bytes,
 
-            duration:
-              uploaded.duration,
+            duration: uploaded.duration,
 
             originalFilename:
               uploaded.originalFilename,
 
-            mimeType:
-              uploaded.mimeType,
+            mimeType: uploaded.mimeType,
 
-            type:
-              resourceType,
+            /*
+             * For PDFs this is the Cloudinary-generated
+             * first-page JPG thumbnail.
+             *
+             * For other media this may be undefined.
+             */
+            thumbnailUrl:
+              uploaded.thumbnailUrl,
+
+            type: normalizedResourceType,
           },
         });
       } catch (error) {

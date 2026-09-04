@@ -28,31 +28,47 @@ export interface UploadedMedia {
   duration?: number;
   originalFilename: string;
   mimeType: string;
+
+  /**
+   * Cloudinary-generated first-page JPG thumbnail.
+   *
+   * Only populated for PDF uploads.
+   */
+  thumbnailUrl?: string;
 }
 
 /* -------------------------------------------------------------------------- */
 /* Helpers                                                                    */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Maps our application media types to Cloudinary resource types.
+ *
+ * AUDIO -> video
+ * IMAGE -> image
+ * PDF   -> image
+ *
+ * PDFs intentionally use Cloudinary's image resource type so that
+ * Cloudinary can generate page-based transformations/thumbnails.
+ */
 function getResourceType(
   type: UploadMediaType,
-): "image" | "video" | "raw" {
+): "image" | "video" {
   switch (type) {
     case "IMAGE":
       return "image";
 
-    /*
-     * Cloudinary uses the "video" resource type
-     * for audio files.
-     */
     case "AUDIO":
       return "video";
 
     case "PDF":
-      return "raw";
+      return "image";
   }
 }
 
+/**
+ * Determines the Cloudinary folder for each media type.
+ */
 function getFolder(
   type: UploadMediaType,
 ): string {
@@ -68,6 +84,33 @@ function getFolder(
   }
 }
 
+/**
+ * Generates a secure JPG URL for the first page of a PDF.
+ *
+ * The PDF itself remains stored in Cloudinary.
+ * This URL is only used as the resource thumbnail.
+ */
+function getPdfThumbnailUrl(
+  publicId: string,
+): string {
+  return cloudinary.url(publicId, {
+    resource_type: "image",
+    type: "upload",
+    secure: true,
+
+    transformation: [
+      {
+        page: 1,
+        width: 800,
+        crop: "limit",
+        quality: "auto",
+        fetch_format: "jpg",
+      },
+    ],
+
+    format: "jpg",
+  });
+}
 /* -------------------------------------------------------------------------- */
 /* Upload Media                                                               */
 /* -------------------------------------------------------------------------- */
@@ -90,14 +133,46 @@ export async function uploadMedia(
 
             folder,
 
+            /*
+             * Preserve the original filename where possible.
+             */
             use_filename: true,
+
+            /*
+             * Prevent collisions between files with
+             * identical names.
+             */
             unique_filename: true,
+
             overwrite: false,
-            filename_override: input.filename,
+
+            /*
+             * Keep the original filename available
+             * to Cloudinary.
+             */
+            filename_override:
+              input.filename,
+
+            original_filename:
+              input.filename,
+
+            /*
+             * PDFs must remain PDFs even though they
+             * are stored using Cloudinary's image
+             * resource type.
+             */
+            ...(input.type === "PDF" && {
+              format: "pdf",
+            }),
           },
 
           (error, result) => {
             if (error) {
+              console.error(
+                "CLOUDINARY UPLOAD ERROR:",
+                error,
+              );
+
               reject(error);
               return;
             }
@@ -111,6 +186,21 @@ export async function uploadMedia(
 
               return;
             }
+
+            /*
+             * Only PDFs receive an automatically
+             * generated thumbnail.
+             *
+             * Audio thumbnails are handled separately
+             * by the application when an admin supplies
+             * an image thumbnail.
+             */
+            const thumbnailUrl =
+              input.type === "PDF"
+                ? getPdfThumbnailUrl(
+                    result.public_id,
+                  )
+                : undefined;
 
             resolve({
               publicId:
@@ -139,10 +229,16 @@ export async function uploadMedia(
 
               mimeType:
                 input.mimeType,
+
+              thumbnailUrl,
             });
           },
         );
 
+      /*
+       * Convert the uploaded Buffer into a readable
+       * stream and pipe it into Cloudinary.
+       */
       Readable
         .from(input.buffer)
         .pipe(uploadStream);

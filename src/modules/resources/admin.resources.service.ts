@@ -24,12 +24,20 @@ interface ResourceMediaInput {
 
   /**
    * MediaAsset.fileSize is String? in schema.prisma.
-   *
-   * Keep this as a string throughout the service.
    */
   fileSize?: string | null;
 
   duration?: number | null;
+
+  /**
+   * URL for a media-specific thumbnail.
+   *
+   * - PDF: automatically generated first-page JPG
+   * - AUDIO: optional uploaded cover/thumbnail image
+   * - IMAGE: normally not required
+   * - VIDEO: can be used when supplied by the external provider
+   */
+  thumbnailUrl?: string | null;
 }
 
 interface CreateResourceInput {
@@ -54,6 +62,8 @@ interface CreateResourceInput {
 
   seriesId?: string | null;
 
+  thumbnail?: ResourceMediaInput;
+
   media?: ResourceMediaInput[];
 }
 
@@ -67,12 +77,8 @@ export type UpdateResourceInput =
 /**
  * Converts our service media input into Prisma's nested media-create input.
  *
- * This explicitly tells TypeScript that fileSize is a string,
- * matching:
- *
- * fileSize String?
- *
- * in schema.prisma.
+ * This keeps all media fields, including thumbnailUrl, when a media asset
+ * is created.
  */
 function toMediaCreateData(
   media: ResourceMediaInput,
@@ -81,11 +87,20 @@ function toMediaCreateData(
     type: media.type,
     provider: media.provider,
 
-    title: media.title || null,
-    url: media.url || null,
-    storageKey: media.storageKey || null,
-    externalId: media.externalId || null,
-    mimeType: media.mimeType || null,
+    title:
+      media.title?.trim() || null,
+
+    url:
+      media.url?.trim() || null,
+
+    storageKey:
+      media.storageKey?.trim() || null,
+
+    externalId:
+      media.externalId?.trim() || null,
+
+    mimeType:
+      media.mimeType?.trim() || null,
 
     fileSize:
       media.fileSize !== undefined &&
@@ -93,7 +108,11 @@ function toMediaCreateData(
         ? String(media.fileSize)
         : null,
 
-    duration: media.duration ?? null,
+    duration:
+      media.duration ?? null,
+
+    thumbnailUrl:
+      media.thumbnailUrl?.trim() || null,
   };
 }
 
@@ -115,7 +134,9 @@ const resourceInclude = {
   },
 
   media: true,
+
   thumbnail: true,
+
   series: true,
 };
 
@@ -161,9 +182,11 @@ export async function createResource(
 
   const resource = await prisma.resource.create({
     data: {
-      title: input.title.trim(),
+      title:
+        input.title.trim(),
 
-      slug: input.slug.trim(),
+      slug:
+        input.slug.trim(),
 
       description:
         input.description?.trim() || null,
@@ -171,7 +194,8 @@ export async function createResource(
       content:
         input.content?.trim() || null,
 
-      type: input.type,
+      type:
+        input.type,
 
       speaker:
         input.speaker?.trim() || null,
@@ -252,25 +276,56 @@ export async function createResource(
     include: resourceInclude,
   });
 
-  const thumbnail = await prisma.mediaAsset.findFirst({
-    where: {
-      resourceId: resource.id,
-      type: "IMAGE",
-    },
-    orderBy: {
-      createdAt: "asc",
-    },
-  });
+  /* ------------------------------------------------------------------------ */
+  /* Resource Thumbnail                                                       */
+  /* ------------------------------------------------------------------------ */
 
-  if (thumbnail) {
+  /**
+   * If the admin explicitly supplied a resource thumbnail,
+   * use it.
+   *
+   * We no longer create a separate thumbnail automatically
+   * from the PDF URL.
+   *
+   * PDF media now stores its own thumbnailUrl directly.
+   */
+  if (input.thumbnail) {
+    const thumbnail =
+      await prisma.mediaAsset.create({
+        data: {
+          ...toMediaCreateData(
+            input.thumbnail,
+          ),
+
+          thumbnailFor: {
+            connect: {
+              id: resource.id,
+            },
+          },
+        },
+      });
+
     await prisma.resource.update({
-      where: { id: resource.id },
-      data: { thumbnailId: thumbnail.id },
+      where: {
+        id: resource.id,
+      },
+
+      data: {
+        thumbnailId:
+          thumbnail.id,
+      },
     });
   }
 
+  /* ------------------------------------------------------------------------ */
+  /* Return Created Resource                                                  */
+  /* ------------------------------------------------------------------------ */
+
   return prisma.resource.findUnique({
-    where: { id: resource.id },
+    where: {
+      id: resource.id,
+    },
+
     include: resourceInclude,
   });
 }
@@ -291,220 +346,373 @@ export async function updateResource(
     });
 
   if (!existing) {
-    throw new Error("Resource not found");
+    throw new Error(
+      "Resource not found",
+    );
   }
 
-  return prisma.$transaction(async (tx) => {
-    /* ---------------------------------------------------------------------- */
-    /* Basic Resource Fields                                                  */
-    /* ---------------------------------------------------------------------- */
-
-    await tx.resource.update({
-      where: {
-        id,
-      },
-
-      data: {
-        ...(input.title !== undefined && {
-          title: input.title.trim(),
-        }),
-
-        ...(input.slug !== undefined && {
-          slug: input.slug.trim(),
-        }),
-
-        ...(input.description !== undefined && {
-          description:
-            input.description?.trim() || null,
-        }),
-
-        ...(input.content !== undefined && {
-          content:
-            input.content?.trim() || null,
-        }),
-
-        ...(input.type !== undefined && {
-          type: input.type,
-        }),
-
-        ...(input.speaker !== undefined && {
-          speaker:
-            input.speaker?.trim() || null,
-        }),
-
-        ...(input.duration !== undefined && {
-          duration: input.duration,
-        }),
-
-        ...(input.featured !== undefined && {
-          featured: input.featured,
-        }),
-
-        ...(input.published !== undefined && {
-          published: input.published,
-
-          publishedAt: input.published
-            ? existing.publishedAt ??
-              new Date()
-            : null,
-        }),
-
-        ...(input.publishedAt !== undefined && {
-          publishedAt: input.publishedAt
-            ? new Date(input.publishedAt)
-            : null,
-        }),
-
-        ...(input.seriesId !== undefined && {
-          seriesId:
-            input.seriesId || null,
-        }),
-      },
-    });
-
-    /* ---------------------------------------------------------------------- */
-    /* Categories                                                             */
-    /* ---------------------------------------------------------------------- */
-
-    if (input.categoryIds !== undefined) {
-      await tx.resourceCategory.deleteMany({
-        where: {
-          resourceId: id,
-        },
-      });
-
-      if (input.categoryIds.length > 0) {
-        await tx.resourceCategory.createMany({
-          data: input.categoryIds.map(
-            (categoryId) => ({
-              resourceId: id,
-              categoryId,
-            }),
-          ),
-
-          skipDuplicates: true,
-        });
-      }
-    }
-
-    /* ---------------------------------------------------------------------- */
-    /* Tags                                                                   */
-    /* ---------------------------------------------------------------------- */
-
-    if (input.tagIds !== undefined) {
-      await tx.resourceTag.deleteMany({
-        where: {
-          resourceId: id,
-        },
-      });
-
-      if (input.tagIds.length > 0) {
-        await tx.resourceTag.createMany({
-          data: input.tagIds.map(
-            (tagId) => ({
-              resourceId: id,
-              tagId,
-            }),
-          ),
-
-          skipDuplicates: true,
-        });
-      }
-    }
-
-    /* ---------------------------------------------------------------------- */
-    /* Media                                                                  */
-    /* ---------------------------------------------------------------------- */
-
-    if (input.media !== undefined) {
-      /**
-       * The edit page sends the complete current
-       * media collection.
-       *
-       * Therefore:
-       *
-       * media: []
-       *
-       * means remove all media from the resource.
-       */
-
-      await tx.mediaAsset.deleteMany({
-        where: {
-          resourceId: id,
-        },
-      });
-
-      if (input.media.length > 0) {
-        await tx.mediaAsset.createMany({
-          data: input.media.map(
-            (media) => ({
-              resourceId: id,
-
-              type: media.type,
-
-              provider:
-                media.provider,
-
-              title:
-                media.title || null,
-
-              url:
-                media.url || null,
-
-              storageKey:
-                media.storageKey || null,
-
-              externalId:
-                media.externalId || null,
-
-              mimeType:
-                media.mimeType || null,
-
-              fileSize:
-                media.fileSize !== undefined &&
-                media.fileSize !== null
-                  ? String(
-                      media.fileSize,
-                    )
-                  : null,
-
-              duration:
-                media.duration ?? null,
-            }),
-          ),
-        });
-      }
-
-      const thumbnail = await tx.mediaAsset.findFirst({
-        where: {
-          resourceId: id,
-          type: "IMAGE",
-        },
-        orderBy: {
-          createdAt: "asc",
-        },
-      });
+  return prisma.$transaction(
+    async (tx) => {
+      /* -------------------------------------------------------------------- */
+      /* Basic Resource Fields                                                */
+      /* -------------------------------------------------------------------- */
 
       await tx.resource.update({
-        where: { id },
+        where: {
+          id,
+        },
+
         data: {
-          thumbnailId: thumbnail?.id ?? null,
+          ...(input.title !== undefined && {
+            title:
+              input.title.trim(),
+          }),
+
+          ...(input.slug !== undefined && {
+            slug:
+              input.slug.trim(),
+          }),
+
+          ...(input.description !== undefined && {
+            description:
+              input.description?.trim() ||
+              null,
+          }),
+
+          ...(input.content !== undefined && {
+            content:
+              input.content?.trim() ||
+              null,
+          }),
+
+          ...(input.type !== undefined && {
+            type:
+              input.type,
+          }),
+
+          ...(input.speaker !== undefined && {
+            speaker:
+              input.speaker?.trim() ||
+              null,
+          }),
+
+          ...(input.duration !== undefined && {
+            duration:
+              input.duration,
+          }),
+
+          ...(input.featured !== undefined && {
+            featured:
+              input.featured,
+          }),
+
+          ...(input.published !== undefined && {
+            published:
+              input.published,
+
+            publishedAt:
+              input.published
+                ? existing.publishedAt ??
+                  new Date()
+                : null,
+          }),
+
+          ...(input.publishedAt !== undefined && {
+            publishedAt:
+              input.publishedAt
+                ? new Date(
+                    input.publishedAt,
+                  )
+                : null,
+          }),
+
+          ...(input.seriesId !== undefined && {
+            seriesId:
+              input.seriesId || null,
+          }),
         },
       });
-    }
 
-    /* ---------------------------------------------------------------------- */
-    /* Return Updated Resource                                                */
-    /* ---------------------------------------------------------------------- */
+      /* -------------------------------------------------------------------- */
+      /* Categories                                                           */
+      /* -------------------------------------------------------------------- */
 
-    return tx.resource.findUnique({
-      where: {
-        id,
-      },
+      if (
+        input.categoryIds !== undefined
+      ) {
+        await tx.resourceCategory.deleteMany({
+          where: {
+            resourceId: id,
+          },
+        });
 
-      include: resourceInclude,
-    });
-  });
+        if (
+          input.categoryIds.length > 0
+        ) {
+          await tx.resourceCategory.createMany({
+            data:
+              input.categoryIds.map(
+                (categoryId) => ({
+                  resourceId: id,
+                  categoryId,
+                }),
+              ),
+
+            skipDuplicates: true,
+          });
+        }
+      }
+
+      /* -------------------------------------------------------------------- */
+      /* Tags                                                                 */
+      /* -------------------------------------------------------------------- */
+
+      if (
+        input.tagIds !== undefined
+      ) {
+        await tx.resourceTag.deleteMany({
+          where: {
+            resourceId: id,
+          },
+        });
+
+        if (
+          input.tagIds.length > 0
+        ) {
+          await tx.resourceTag.createMany({
+            data:
+              input.tagIds.map(
+                (tagId) => ({
+                  resourceId: id,
+                  tagId,
+                }),
+              ),
+
+            skipDuplicates: true,
+          });
+        }
+      }
+
+      /* -------------------------------------------------------------------- */
+      /* Media                                                                */
+      /* -------------------------------------------------------------------- */
+
+      if (
+        input.media !== undefined
+      ) {
+        /**
+         * The edit page sends the complete current
+         * media collection.
+         *
+         * Therefore:
+         *
+         * media: []
+         *
+         * means remove all media from the resource.
+         */
+
+        await tx.mediaAsset.deleteMany({
+          where: {
+            resourceId: id,
+          },
+        });
+
+        if (
+          input.media.length > 0
+        ) {
+          await tx.mediaAsset.createMany({
+            data:
+              input.media.map(
+                (media) => ({
+                  resourceId: id,
+
+                  type:
+                    media.type,
+
+                  provider:
+                    media.provider,
+
+                  title:
+                    media.title?.trim() ||
+                    null,
+
+                  url:
+                    media.url?.trim() ||
+                    null,
+
+                  storageKey:
+                    media.storageKey?.trim() ||
+                    null,
+
+                  externalId:
+                    media.externalId?.trim() ||
+                    null,
+
+                  mimeType:
+                    media.mimeType?.trim() ||
+                    null,
+
+                  fileSize:
+                    media.fileSize !==
+                      undefined &&
+                    media.fileSize !==
+                      null
+                      ? String(
+                          media.fileSize,
+                        )
+                      : null,
+
+                  duration:
+                    media.duration ??
+                    null,
+
+                  /*
+                   * IMPORTANT:
+                   *
+                   * Preserve the media-specific
+                   * thumbnail URL when editing.
+                   *
+                   * This is what allows PDF and
+                   * audio thumbnails to survive
+                   * resource edits.
+                   */
+                  thumbnailUrl:
+                    media.thumbnailUrl
+                      ?.trim() ||
+                    null,
+                }),
+              ),
+          });
+        }
+
+        /* ------------------------------------------------------------------ */
+        /* Resource Thumbnail                                                 */
+        /* ------------------------------------------------------------------ */
+
+        /**
+         * Do NOT select the first IMAGE media as the
+         * resource thumbnail automatically.
+         *
+         * An IMAGE may be an audio cover, article image,
+         * etc. It should not automatically become the
+         * resource's primary thumbnail.
+         *
+         * The explicit `input.thumbnail` controls the
+         * resource-level thumbnail.
+         */
+        if (
+          input.thumbnail === undefined
+        ) {
+          /*
+           * Keep the existing resource thumbnail.
+           *
+           * Deleting/recreating media above does not
+           * affect the separately linked thumbnail asset.
+           */
+        }
+      }
+
+      /* -------------------------------------------------------------------- */
+      /* Explicit Resource Thumbnail                                          */
+      /* -------------------------------------------------------------------- */
+
+      if (
+        input.thumbnail !== undefined
+      ) {
+        /*
+         * Get the current resource-level
+         * thumbnail before replacing it.
+         */
+        const currentResource =
+          await tx.resource.findUnique({
+            where: {
+              id,
+            },
+
+            select: {
+              thumbnailId: true,
+            },
+          });
+
+        /*
+         * IMPORTANT:
+         *
+         * Clear the foreign-key reference BEFORE
+         * deleting the old MediaAsset.
+         *
+         * Resource.thumbnailId points to MediaAsset.id,
+         * so deleting the MediaAsset while the Resource
+         * still references it can violate the FK constraint.
+         */
+        if (
+          currentResource?.thumbnailId
+        ) {
+          await tx.resource.update({
+            where: {
+              id,
+            },
+
+            data: {
+              thumbnailId: null,
+            },
+          });
+
+          await tx.mediaAsset.delete({
+            where: {
+              id:
+                currentResource.thumbnailId,
+            },
+          });
+        }
+
+        /*
+         * If a new thumbnail was supplied, create it
+         * as a separate MediaAsset and connect it to
+         * the resource through the ResourceThumbnail
+         * relation.
+         */
+        const thumbnail =
+          input.thumbnail
+            ? await tx.mediaAsset.create({
+                data: {
+                  ...toMediaCreateData(
+                    input.thumbnail,
+                  ),
+
+                  thumbnailFor: {
+                    connect: {
+                      id,
+                    },
+                  },
+                },
+              })
+            : null;
+
+        await tx.resource.update({
+          where: {
+            id,
+          },
+
+          data: {
+            thumbnailId:
+              thumbnail?.id ?? null,
+          },
+        });
+      }
+
+      /* -------------------------------------------------------------------- */
+      /* Return Updated Resource                                              */
+      /* -------------------------------------------------------------------- */
+
+      return tx.resource.findUnique({
+        where: {
+          id,
+        },
+
+        include: resourceInclude,
+      });
+    },
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -519,6 +727,10 @@ export async function deleteResource(
       where: {
         id,
       },
+
+      select: {
+        thumbnailId: true,
+      },
     });
 
   if (!existing) {
@@ -527,11 +739,30 @@ export async function deleteResource(
     );
   }
 
+  /*
+   * Resource media is deleted automatically by the
+   * ResourceMedia relation's onDelete: Cascade.
+   *
+   * The resource-level thumbnail is a separate
+   * MediaAsset, however, so we clean it up explicitly
+   * to avoid leaving an orphaned thumbnail record.
+   */
+  const thumbnailId =
+    existing.thumbnailId;
+
   await prisma.resource.delete({
     where: {
       id,
     },
   });
+
+  if (thumbnailId) {
+    await prisma.mediaAsset.delete({
+      where: {
+        id: thumbnailId,
+      },
+    });
+  }
 
   return {
     success: true,

@@ -37,4 +37,19 @@ cloudinary.config({
   secure: true,
 });
 
+cloudinary.api
+  .ping()
+  .then((result) => {
+    console.log(
+      "Cloudinary connection successful:",
+      result,
+    );
+  })
+  .catch((error) => {
+    console.error(
+      "Cloudinary connection failed:",
+      error,
+    );
+  });
+  
 export default cloudinary;

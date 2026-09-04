@@ -135,17 +135,29 @@ export async function resourceRoutes(
       /* Fetch                                                                */
       /* -------------------------------------------------------------------- */
 
-      const result =
-        await getPublishedResources({
-          page,
-          limit,
-          type,
-          category: query.category,
-          featured,
-          search,
-        });
+      try {
+        const result =
+          await getPublishedResources({
+            page,
+            limit,
+            type,
+            category: query.category,
+            featured,
+            search,
+          });
 
-      return result;
+        return result;
+      } catch (error) {
+        requestLog(
+          app,
+          error,
+          "Failed to load published resources",
+        );
+
+        return reply.code(500).send({
+          error: "Failed to load resources",
+        });
+      }
     },
   );
 
